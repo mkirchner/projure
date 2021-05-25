@@ -2,52 +2,47 @@
   (:require [clojure.string :as str])
   (:gen-class))
 
-(def occurs-check (atom true))
+(defonce occurs-check (atom true))
 (defn get-occurs-check [] @occurs-check)
 (defn toggle-occurs-check [] (swap! occurs-check not))
 
 (defn variable?
-  "Is the argument a prolog variable?"
+  "Test if the argument is a Prolog variable.
+  Prolog variables are symbols with names that start with
+  a question mark, e.g. ?a, ?b, ?value."
   [x]
   (and (symbol? x) (str/starts-with? (name x) "?")))
 
-(defn get-binding
-  "Get the binding (key and value) for a key"
+(defn has-binding
+  "Check if there is a binding for a variable."
   [bindings var-name]
-  (assoc {} var-name (bindings var-name)))
+  (contains? bindings var-name))
 
-(defn lookup
+(defn lookup-binding
   "Get the value of the bound variable `var-name`"
   [bindings var-name]
   (bindings var-name))
 
-(defn extend-bindings
+(defn add-binding
   "Append a new binding to the list of existing bindings"
   [bindings k v]
   (assoc bindings k v))
 
-(defn match-variable
-  "Match a variable: check that the variable value corresponds
-   to the current binding or update the bindings to include
-   the new definition."
-  [bindings var-name input]
-  (let [value (lookup bindings var-name)]
-   (cond (not value) (extend-bindings bindings var-name input)
-         (= value input) bindings
-         :else nil)))
-
 (declare unify)
+
 (declare occurs)
 
 (defn unify-variable
   "Unify a variable w/ x, using, and possibly extending
    the bindings"
   [v x bindings]
-  (cond (contains? bindings v) (unify (lookup bindings v) x bindings)
-        (contains? bindings x) (unify v (lookup bindings x) bindings)
+  (cond (contains? bindings v)
+          (unify (lookup-binding bindings v) x bindings)
+        (contains? bindings x)
+          (unify v (lookup-binding bindings x) bindings)
         ; fail if we force the "occurs check" and v is in x
         (and @occurs-check (occurs v x bindings)) nil
-        :else (extend-bindings bindings v x)))
+        :else (add-binding bindings v x)))
 
 (defn unify
   ""
@@ -70,7 +65,7 @@
         (= v term) true
         ; the term is a bound variable and we need to resolve
         (and (variable? term) (contains? bindings term))
-          (occurs v (lookup bindings term) bindings)
+          (occurs v (lookup-binding bindings term) bindings)
         ; the term is a sequence of terms and we need to
         ; recurse over the sequence
         (and (seq? term) (not (empty? term)))
@@ -88,7 +83,7 @@
         (= bindings {}) term
         ; term is a bound variable, recurse on its value
         (and (variable? term) (contains? bindings term))
-          (eval-bindings bindings (lookup bindings term))
+          (eval-bindings bindings (lookup-binding bindings term))
         ; term is a sequence, recurse on elements of the sequence
         (and (seq? term) (not (empty? term)))
           (cons (eval-bindings bindings (first term))
