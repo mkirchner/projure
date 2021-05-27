@@ -6,6 +6,8 @@
 (defn get-occurs-check [] @occurs-check)
 (defn toggle-occurs-check [] (swap! occurs-check not))
 
+(defonce db (atom {}))
+
 (defn variable?
   "Test if the argument is a Prolog variable.
   Prolog variables are symbols with names that start with
@@ -96,6 +98,66 @@
   [x y]
   (eval-bindings (unify x y) x))
 
+
+;; Clauses are represented as lists where the first element
+;; is the head and the rest is the body. Facts have an empty
+;; body.
+
+(defn clause-head
+  "Returns the head of a clause."
+  [clause]
+  (first clause))
+
+(defn clause-body
+  "Returns the body of a clause."
+  [clause]
+  (rest clause))
+
+;; We store clauses in a map of vectors, indexed by their predicate. This
+;; means we store one prolog procedure per map key.
+
+(defn kb-get-clauses
+  "Returns all clauses for a predicate."
+  [kb predicate]
+  (kb predicate))
+
+(defn get-functor
+  "Given a predicate, return its functor, i.e. name and arity."
+  [predicate]
+  (symbol (str (first predicate) "/" (count (rest predicate)))))
+
+(defn kb-add-clause
+  "Adds a clause to the knowledge base."
+  [kb clause]
+  ; get the name of the predicate
+  (let [functor (get-functor (clause-head clause))]
+    (println functor)
+    ; the functor must be a non-variable symbol
+    (if (and (symbol? functor) (not (variable? functor)))
+      ; update inside the map, creating a new vector of clauses
+      ; if the functor does not exists as a key yet; return the
+      ; procedure (i.e. ordered list of all clauses)
+      (update-in kb [functor] (fnil conj []) clause)
+      ; fail by returning nil (FIXME?)
+      nil)))
+
+(defn kb-delete-predicate
+  "Deletes a predicate."
+  [kb predicate]
+  (dissoc kb predicate))
+
+(defn kb-drop
+  "Drop the knowledge base."
+  [kb]
+  (dissoc kb (keys kb)))
+
+;; functions to use global prolog KB
+
+(defn add-clause [clause]
+  (swap! db kb-add-clause clause))
+
+(defn delete-predicate [predicate]
+  (swap! db kb-delete-predicate predicate))
 
 (defn -main
   "I don't do a whole lot ... yet."
