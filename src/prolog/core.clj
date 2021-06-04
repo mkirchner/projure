@@ -1,5 +1,6 @@
 (ns prolog.core
   (:require [clojure.string :as str])
+  (:use [clojure.tools.trace])
   (:gen-class))
 
 (defonce occurs-check (atom true))
@@ -7,6 +8,13 @@
 (defn toggle-occurs-check [] (swap! occurs-check not))
 
 (defonce db (atom {}))
+
+(def fail "Indicate failure in the return value" nil)
+(defn fail? [x] (nil? x))
+
+(def no-bindings "Indicate that unification was successful
+                          but there were no bindings" {})
+(defn no-bindings? [x] (and (map? x) (empty? x)))
 
 (defn variable?
   "Test if the argument is a Prolog variable.
@@ -43,21 +51,21 @@
         (contains? bindings x)
           (unify v (lookup-binding bindings x) bindings)
         ; fail if we force the "occurs check" and v is in x
-        (and @occurs-check (occurs v x bindings)) nil
+        (and @occurs-check (occurs v x bindings)) fail
         :else (add-binding bindings v x)))
 
 (defn unify
   ""
   ([x y] (unify x y {}))
   ([x y bindings]
-   (cond (not bindings) nil
+   (cond (fail? bindings) fail
          (= x y) bindings
          (variable? x) (unify-variable x y bindings)
          (variable? y) (unify-variable y x bindings)
          (and (seq? x) (seq? y))
            (unify (rest x) (rest y)
                   (unify (first x) (first y) bindings))
-         :else nil)))
+         :else fail)))
 
 (defn occurs
   "Determine if a variable occurs in a term, recursively resolving
@@ -80,9 +88,9 @@
   ""
   [bindings term]
   (cond ; invalid bindings
-        (= bindings nil) nil
+        (fail? bindings) fail
         ; no bindings
-        (= bindings {}) term
+        (no-bindings? bindings) term
         ; term is a bound variable, recurse on its value
         (and (variable? term) (contains? bindings term))
           (eval-bindings bindings (lookup-binding bindings term))
@@ -131,14 +139,13 @@
   [kb clause]
   ; get the name of the predicate
   (let [functor (get-functor (clause-head clause))]
-    (println functor)
     ; the functor must be a non-variable symbol
     (if (and (symbol? functor) (not (variable? functor)))
       ; update inside the map, creating a new vector of clauses
       ; if the functor does not exists as a key yet; return the
       ; procedure (i.e. ordered list of all clauses)
       (update-in kb [functor] (fnil conj []) clause)
-      ; fail by returning nil (FIXME?)
+      ; fail by returning nil
       nil)))
 
 (defn kb-delete-predicate
@@ -158,6 +165,134 @@
 
 (defn delete-predicate [predicate]
   (swap! db kb-delete-predicate predicate))
+
+(defn get-clauses [functor]
+  (kb-get-clauses @db functor))
+
+(defmacro <-
+  "Add a clause to the Prolog knowledge base.
+  This allows spelling out clauses w/o the quoting that would be required
+  in raw Clojure."
+  [& clauses]
+  `(add-clause '~(vec clauses)))
+
+;; prove
+
+(defn find-unique-leaves-if
+  "Find and (uniquely) collect all leaves of a tree that satisfy
+  a predicate"
+  ([predicate tree]
+  (find-unique-leaves-if predicate tree #{}))
+  ([predicate tree acc]
+  (cond ; tree is a leaf
+        (not (seq? tree)) (if (predicate tree)
+                              (conj acc tree)
+                              acc)
+        ; tree is a list, recurse over content
+        (and (seq? tree) (not (empty? tree))) (find-unique-leaves-if
+                                                predicate
+                                                (first tree)
+                                                (find-unique-leaves-if
+                                                  predicate
+                                                  (rest tree)
+                                                  acc))
+        ; empty list
+        :else acc)))
+
+(defn variables
+  "Return a list of all variables in an expression."
+  [expr]
+  (find-unique-leaves-if variable? expr))
+
+;; replace substitue w/ clojure.walk/prewalk-replace ??
+(defn substitute
+  ; allows functions or maps as sfn
+  [sset sfn tree]
+  (cond ; tree is a leaf
+        (not (seq? tree)) (if (contains? sset tree)
+                            (sfn tree)
+                            tree)
+        ; tree is not a leaf and not empty
+        (and (seq? tree) (not (empty? tree)))
+          (conj (substitute sset sfn (rest tree))
+                (substitute sset sfn (first tree)))
+        ; fixpoint
+        :else (list)))
+
+(defn rename-variables
+  "Replace all prolog variables in expression w/ unique gensyms"
+  [expr]
+  (let [vars (variables expr)
+        varmap (zipmap vars (map #(gensym (str %1)) vars))]
+    (substitute vars varmap expr)))
+
+(declare prove)
+(declare prove-all)
+
+(defn prove
+  "Prove a single goal, returning a list of possible solutions"
+  [goal bindings]
+  (let [; find all candidate clauses for the goal
+        goal-clauses (get-clauses (get-functor goal))]
+    ; try to satisfy every goal
+    (filter identity (map (fn [clause]
+           (let [new-clause (rename-variables clause)]
+             (prove-all (clause-body new-clause)
+                        (unify goal (clause-head new-clause) bindings))))
+         goal-clauses))))
+
+(defn prove-all
+  "Return a list of solutions to a conjunction of goals"
+  [goals bindings]
+  (cond ; no bindings
+        (fail? bindings) fail
+        ; no goals left, return the bindings
+        (empty? goals) bindings
+        ; else recurse on the list
+        :else (let [cur-solution (prove (first goals) bindings)]
+                ; filter all nil values and flatten nested solutions
+                (flatten (filter identity (map (partial prove-all (rest goals)) cur-solution))))))
+
+(defn print-vars
+  [vars bindings]
+  (cond
+    (fail? bindings) (println "No.")
+    (empty? vars) (println "Yes.")
+    :else (do
+            (doseq [v vars]
+              (println v " = " (eval-bindings bindings v)))
+            (println))))
+
+(deftrace print-solutions
+  [vars solutions]
+  (dorun (map #(print-vars vars %) solutions)))
+
+(defn pretty-prove [goals bindings]
+  (print-solutions (variables (clause-body goals)) (prove-all (clause-body goals) bindings)))
+
+(defmacro ?-
+  [& goals]
+  ; a goal is a rule without a head
+  `(pretty-prove '~(vec (concat (list nil) goals)) {}))
+
+
+;
+; on-the-fly testing
+;
+
+(<- (likes Kim Robin))
+(?- (likes Kim Robin))
+
+
+(<- (likes Sandy Lee))
+(<- (likes Sandy Kim))
+(<- (likes Robin cats))
+(<- (likes Sandy ?x) (likes ?x cats))
+(<- (likes Kim ?x) (likes ?x Lee) (likes ?x Kim))
+(<- (likes ?x ?x))
+
+(?- (likes Lee Sandy))
+(?- (likes Sandy ?who))
 
 (defn -main
   "I don't do a whole lot ... yet."

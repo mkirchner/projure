@@ -38,10 +38,10 @@
     (is (= (unify '(?x ?x ?x) '(?y ?y ?y)) {'?x '?y}))
     (is (= (unify '(?x ?y) '(?y ?x)) {'?x '?y}))
     (is (= (unify '(?x ?y a) '(?y ?x ?x)) {'?y 'a, '?x '?y}))
-    (is (= (unify '?x '(f ?x)) nil))
-    (is (= (unify '(?x ?y) '((f ?y) (f ?x))) nil))
-    (is (= (unify '(?x ?y ?z) '((?y ?z) (?x ?z) (?x ?y))) nil))
-    (is (= (unify 'a 'a) {})))
+    (is (= (unify '?x '(f ?x)) fail))
+    (is (= (unify '(?x ?y) '((f ?y) (f ?x))) fail))
+    (is (= (unify '(?x ?y ?z) '((?y ?z) (?x ?z) (?x ?y))) fail))
+    (is (= (unify 'a 'a) no-bindings)))
 
   (testing "Unification without occurs-check"
     (do
