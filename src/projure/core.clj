@@ -69,34 +69,36 @@
   "Determine if a variable occurs in a term, recursively resolving
   bound variables"
   [v term bindings]
-  (cond ; var and term are equal
+  (cond
+    ; var and term are equal
     (= v term) true
-        ; the term is a bound variable and we need to resolve
+    ; the term is a bound variable and we need to resolve
     (and (variable? term) (contains? bindings term))
     (occurs v (lookup-binding bindings term) bindings)
-        ; the term is a sequence of terms and we need to
-        ; recurse over the sequence
+    ; the term is a sequence of terms and we need to
+    ; recurse over the sequence
     (and (seq? term) (not (empty? term)))
     (or (occurs v (first term) bindings)
         (occurs v (rest term) bindings))
-        ; nothing found
+    ; nothing found
     :else false))
 
 (defn eval-bindings
   ""
   [bindings term]
-  (cond ; invalid bindings
+  (cond
+    ; invalid bindings
     (fail? bindings) fail
-        ; no bindings
+    ; no bindings
     (no-bindings? bindings) term
-        ; term is a bound variable, recurse on its value
+    ; term is a bound variable, recurse on its value
     (and (variable? term) (contains? bindings term))
     (eval-bindings bindings (lookup-binding bindings term))
-        ; term is a sequence, recurse on elements of the sequence
+    ; term is a sequence, recurse on elements of the sequence
     (and (seq? term) (not (empty? term)))
     (cons (eval-bindings bindings (first term))
           (eval-bindings bindings (rest term)))
-        ; term is not a bound variable and not a sequence, return
+    ; term is not a bound variable and not a sequence, return
     :else term))
 
 (defn unifier
@@ -183,16 +185,17 @@
   ([predicate tree]
    (find-unique-leaves-if predicate tree #{}))
   ([predicate tree acc]
-   (cond ; tree is a leaf
+   (cond
+     ; tree is a leaf
      (not (sequential? tree))
      (if (predicate tree) (conj acc tree) acc)
-        ; tree is a list, recurse over content
+     ; tree is a list, recurse over content
      (and (sequential? tree) (not (empty? tree)))
      (find-unique-leaves-if
       predicate
       (first tree)
       (find-unique-leaves-if predicate (rest tree) acc))
-        ; empty list
+     ; empty list
      :else acc)))
 
 (defn variables
@@ -204,15 +207,16 @@
 (defn substitute
   ; allows functions or maps as sfn
   [sset sfn tree]
-  (cond ; tree is a leaf
+  (cond
+    ; tree is a leaf
     (not (sequential? tree)) (if (contains? sset tree)
                                (sfn tree)
                                tree)
-        ; tree is not a leaf and not empty
+    ; tree is not a leaf and not empty
     (and (sequential? tree) (not (empty? tree)))
     (conj (substitute sset sfn (rest tree))
           (substitute sset sfn (first tree)))
-        ; fixpoint
+    ; fixpoint
     :else (list)))
 
 (defn rename-variables
@@ -247,13 +251,14 @@
 (defn prove-all
   "Return a list of solutions to a conjunction of goals"
   [goals bindings]
-  (cond ; no bindings
+  (cond
+    ; no bindings
     (fail? bindings) fail
-        ; no goals left, return the bindings
+    ; no goals left, return the bindings
     (empty? goals) bindings
-        ; else recurse on the list
+    ; else recurse on the list
     :else (let [cur-solution (prove (first goals) bindings)]
-                ; filter all nil values and flatten nested solutions
+            ; filter all nil values and flatten nested solutions
             (flatten (filter identity (map (partial prove-all (rest goals)) cur-solution))))))
 
 (defn print-vars
