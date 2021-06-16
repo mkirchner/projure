@@ -1,10 +1,3 @@
-;; # Projure: Prolog in Clojure
-;;
-;; <iframe src="https://ghbtns.com/github-btn.html?user=mkirchner&repo=projure&type=star&count=true" frameborder="0" scrolling="0" width="150" height="20" title="GitHub"></iframe>
-;;
-;; This is a test.
-
-
 (ns projure.core
   (:require [clojure.string :as str]))
 
