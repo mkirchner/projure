@@ -17,8 +17,8 @@
       (is (= 3 (lookup-binding (add-binding bindings '?c 3) '?c)))
       ;; update (re-bind 5 to 3)
       (is (= 3 (lookup-binding
-                 (add-binding
-                   (add-binding bindings '?c 5) '?c 3) '?c))))))
+                (add-binding
+                 (add-binding bindings '?c 5) '?c 3) '?c))))))
 
 (deftest test-occurs-check
   (testing "Simple terms"
@@ -61,4 +61,4 @@
     (is (= (unifier '((?a * ?x + 2) + (?b * ?x) + ?c)
                     '(?z + (4 * 5) + 3))
            '((?a * 5 + 2) + (4 * 5) + 3)))))
-  
+
