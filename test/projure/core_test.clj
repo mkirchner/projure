@@ -1,6 +1,6 @@
-(ns prolog.core-test
+(ns projure.core-test
   (:require [clojure.test :refer :all]
-            [prolog.core :refer :all]))
+            [projure.core :refer :all]))
 
 (deftest test-binding
   (testing "binding operations"

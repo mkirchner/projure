@@ -1,7 +1,5 @@
-(ns prolog.core
-  (:require [clojure.string :as str])
-  (:use [clojure.tools.trace])
-  (:gen-class))
+(ns projure.core
+  (:require [clojure.string :as str]))
 
 (defonce occurs-check (atom true))
 (defn get-occurs-check [] @occurs-check)
@@ -62,7 +60,7 @@
          (= x y) bindings
          (variable? x) (unify-variable x y bindings)
          (variable? y) (unify-variable y x bindings)
-         (and (seq? x) (seq? y))
+         (and (sequential? x) (sequential? y))
            (unify (rest x) (rest y)
                   (unify (first x) (first y) bindings))
          :else fail)))
@@ -185,17 +183,14 @@
   (find-unique-leaves-if predicate tree #{}))
   ([predicate tree acc]
   (cond ; tree is a leaf
-        (not (seq? tree)) (if (predicate tree)
-                              (conj acc tree)
-                              acc)
+        (not (sequential? tree))
+          (if (predicate tree) (conj acc tree) acc)
         ; tree is a list, recurse over content
-        (and (seq? tree) (not (empty? tree))) (find-unique-leaves-if
-                                                predicate
-                                                (first tree)
-                                                (find-unique-leaves-if
-                                                  predicate
-                                                  (rest tree)
-                                                  acc))
+        (and (sequential? tree) (not (empty? tree)))
+          (find-unique-leaves-if
+            predicate
+            (first tree)
+            (find-unique-leaves-if predicate (rest tree) acc))
         ; empty list
         :else acc)))
 
@@ -209,11 +204,11 @@
   ; allows functions or maps as sfn
   [sset sfn tree]
   (cond ; tree is a leaf
-        (not (seq? tree)) (if (contains? sset tree)
-                            (sfn tree)
-                            tree)
+        (not (sequential? tree)) (if (contains? sset tree)
+                                   (sfn tree)
+                                   tree)
         ; tree is not a leaf and not empty
-        (and (seq? tree) (not (empty? tree)))
+        (and (sequential? tree) (not (empty? tree)))
           (conj (substitute sset sfn (rest tree))
                 (substitute sset sfn (first tree)))
         ; fixpoint
@@ -228,18 +223,25 @@
 
 (declare prove)
 (declare prove-all)
+(declare prove-clause)
+
+;; notes: all prove-* functions return a list of bindings (i.e. solutions)
+
+(defn prove-clause
+  "Prove a clause (renaming its variables)"
+  [goal bindings clause]
+  (let [new-clause (vec (rename-variables clause))
+        solution   (unify goal (clause-head new-clause) bindings)]
+    (prove-all (clause-body new-clause) solution)))
 
 (defn prove
   "Prove a single goal, returning a list of possible solutions"
   [goal bindings]
-  (let [; find all candidate clauses for the goal
-        goal-clauses (get-clauses (get-functor goal))]
-    ; try to satisfy every goal
-    (filter identity (map (fn [clause]
-           (let [new-clause (rename-variables clause)]
-             (prove-all (clause-body new-clause)
-                        (unify goal (clause-head new-clause) bindings))))
-         goal-clauses))))
+  (flatten
+    (filter
+      identity
+      (map (partial prove-clause goal bindings)
+           (get-clauses (get-functor goal))))))
 
 (defn prove-all
   "Return a list of solutions to a conjunction of goals"
@@ -263,7 +265,7 @@
               (println v " = " (eval-bindings bindings v)))
             (println))))
 
-(deftrace print-solutions
+(defn print-solutions
   [vars solutions]
   (dorun (map #(print-vars vars %) solutions)))
 
@@ -274,27 +276,3 @@
   [& goals]
   ; a goal is a rule without a head
   `(pretty-prove '~(vec (concat (list nil) goals)) {}))
-
-
-;
-; on-the-fly testing
-;
-
-(<- (likes Kim Robin))
-(?- (likes Kim Robin))
-
-
-(<- (likes Sandy Lee))
-(<- (likes Sandy Kim))
-(<- (likes Robin cats))
-(<- (likes Sandy ?x) (likes ?x cats))
-(<- (likes Kim ?x) (likes ?x Lee) (likes ?x Kim))
-(<- (likes ?x ?x))
-
-(?- (likes Lee Sandy))
-(?- (likes Sandy ?who))
-
-(defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  (println "Hello, World!"))
